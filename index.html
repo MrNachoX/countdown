@@ -57,11 +57,25 @@
     const $ = id => document.getElementById(id);
     const setup = $('setup'), timer = $('timer'), digits = $('digits'), label = $('label');
     let target, tick;
+    let offset = 0; // diferencia entre la hora del servidor y la del PC
+    const now = () => Date.now() + offset;
+
+    // Toma la hora real desde el header Date de la respuesta del servidor
+    async function syncClock() {
+      try {
+        const t0 = Date.now();
+        const res = await fetch(location.href.split('#')[0], { method: 'HEAD', cache: 'no-store', signal: AbortSignal.timeout(3000) });
+        const t1 = Date.now();
+        const server = Date.parse(res.headers.get('Date'));
+        // el header viene truncado al segundo: se suma medio segundo en promedio
+        if (!isNaN(server)) offset = server + 500 - (t0 + t1) / 2;
+      } catch {} // sin conexión o abierto como archivo local: se usa la hora del PC
+    }
 
     const pad = n => String(n).padStart(2, '0');
 
     function render() {
-      const ms = Math.max(0, target - Date.now());
+      const ms = Math.max(0, target - now());
       const s = Math.floor(ms / 1000);
       const d = Math.floor(s / 86400);
       const hms = `${pad(Math.floor(s / 3600) % 24)}:${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}`;
@@ -90,14 +104,16 @@
       start(t);
     });
 
-    // Valores por defecto: ahora + 1 minuto
-    const now = new Date(Date.now() + 60000);
-    $('date').value = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-    $('time').value = `${pad(now.getHours())}:${pad(now.getMinutes())}:00`;
+    syncClock().then(() => {
+      // Valores por defecto: ahora + 1 minuto
+      const d = new Date(now() + 60000);
+      $('date').value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+      $('time').value = `${pad(d.getHours())}:${pad(d.getMinutes())}:00`;
 
-    // Si viene un objetivo en el link (#timestamp), arrancar directo
-    const fromHash = Number(location.hash.slice(1));
-    if (fromHash) start(fromHash);
+      // Si viene un objetivo en el link (#timestamp), arrancar directo
+      const fromHash = Number(location.hash.slice(1));
+      if (fromHash) start(fromHash);
+    });
 
     // Challas
     function confetti() {
